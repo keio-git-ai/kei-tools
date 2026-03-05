@@ -76,7 +76,7 @@ function getAvailableInstructors(date, hour) {
       if (s.instructorId !== inst.id) return false;
       const st = parseTime(s.startTime);
       const et = parseTime(s.endTime);
-      const inRange = st <= hour && et > hour;
+      const inRange = st <= hour && et >= hour + 50 / 60;
       if (s.type === 'fixed') return s.dayOfWeek === dow && inRange;
       if (s.type === 'specific') return s.date === dateStr && inRange;
       return false;
@@ -134,7 +134,7 @@ function render() {
 }
 
 // ===== DASHBOARD =====
-const HOURS = Array.from({ length: 13 }, (_, i) => i + 9); // 9..21
+const HOURS = Array.from({ length: 17 }, (_, i) => i + 6); // 6..22
 const DAY_NAMES = ['月','火','水','木','金','土','日'];
 
 function buildDashboard() {
@@ -143,7 +143,7 @@ function buildDashboard() {
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
 
   let rows = '';
-  for (let hi = 0; hi < HOURS.length - 1; hi++) {
+  for (let hi = 0; hi < HOURS.length; hi++) {
     const hour = HOURS[hi];
     let cells = '';
     dates.forEach(date => {
@@ -152,12 +152,12 @@ function buildDashboard() {
       const lvl = slotLevel(cnt);
       cells += `<td class="slot-cell lvl-${lvl}"
         data-date="${toDateStr(date)}" data-hour="${hour}"
-        title="${toDateStr(date)} ${hour}:00〜${hour+1}:00  対応可能: ${cnt}名">
+        title="${toDateStr(date)} ${pad(hour)}:00〜${pad(hour)}:50  対応可能: ${cnt}名">
         ${cnt > 0 ? `<div class="slot-count">${cnt}</div><div class="slot-unit">名</div>` : ''}
       </td>`;
     });
     rows += `<tr>
-      <td class="td-time">${pad(hour)}:00<br><span style="font-size:9px;opacity:.6">↓</span><br>${pad(hour+1)}:00</td>
+      <td class="td-time">${pad(hour)}:00<br><span style="font-size:9px;opacity:.6">↓</span><br>${pad(hour)}:50</td>
       ${cells}
     </tr>`;
   }
@@ -242,10 +242,10 @@ function showSlotModal(date, hour) {
         </tbody>
       </table>`;
 
-  showModal(`${dateLabel} ${pad(hour)}:00〜${pad(hour+1)}:00`, `
+  showModal(`${dateLabel} ${pad(hour)}:00〜${pad(hour)}:50`, `
     <div class="modal-info">
       <div>
-        <div class="modal-info-time">${pad(hour)}:00〜${pad(hour+1)}:00</div>
+        <div class="modal-info-time">${pad(hour)}:00〜${pad(hour)}:50</div>
         <div class="modal-info-detail">${dateLabel}</div>
       </div>
       <span class="avail-count">${avail.length}名 対応可能</span>
@@ -605,7 +605,7 @@ function showHolidayForm() {
   };
 }
 
-function generateTimeOpts(startH = 7, endH = 23) {
+function generateTimeOpts(startH = 6, endH = 23) {
   let opts = '';
   for (let h = startH; h <= endH; h++) {
     opts += `<option value="${pad(h)}:00">${pad(h)}:00</option>`;
@@ -654,7 +654,7 @@ function showShiftForm(type) {
   const startSel = document.getElementById('sStart');
   const endSel = document.getElementById('sEnd');
   startSel.value = '09:00';
-  endSel.value = '18:00';
+  endSel.value = '17:00';
 
   document.getElementById('cancelShift').onclick = closeModal;
 
