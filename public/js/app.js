@@ -235,7 +235,7 @@ function showSlotModal(date, hour) {
             <td>${inst.company ? escHtml(inst.company) : '<span class="text-muted">—</span>'}</td>
             <td>${(inst.subjects||[]).map(s=>`<span class="tag">${escHtml(s)}</span>`).join('')}</td>
             <td><span class="badge">${escHtml(inst.contractType)}</span></td>
-            <td class="price-cell">${inst.unitPrice ? inst.unitPrice.toLocaleString()+'円' : '—'}</td>
+            <td class="price-cell">${inst.unitPrice ? inst.unitPrice.toLocaleString()+'PHP' : '—'}</td>
           </tr>`).join('')}
         </tbody>
       </table>`;
@@ -267,7 +267,7 @@ function buildInstructors() {
       <td>${inst.company ? escHtml(inst.company) : '<span class="text-muted">—</span>'}</td>
       <td>${(inst.subjects||[]).map(s=>`<span class="tag">${escHtml(s)}</span>`).join('') || '<span class="text-muted">—</span>'}</td>
       <td><span class="badge">${escHtml(inst.contractType)}</span></td>
-      <td class="price-cell">${inst.unitPrice ? inst.unitPrice.toLocaleString()+'円' : '—'}</td>
+      <td class="price-cell">${inst.unitPrice ? inst.unitPrice.toLocaleString()+'PHP' : '—'}</td>
       <td>
         <div class="action-btns">
           <button class="btn btn-ghost btn-sm edit-inst" data-id="${inst.id}">編集</button>
@@ -282,7 +282,7 @@ function buildInstructors() {
         <p>講師が登録されていません<br><small>右上の「講師を追加」から登録してください</small></p>
       </div>`
     : `<table class="data-table">
-        <thead><tr><th>名前</th><th>所属会社</th><th>担当科目</th><th>契約形態</th><th>単価（円/時）</th><th>操作</th></tr></thead>
+        <thead><tr><th>名前</th><th>所属会社</th><th>担当科目</th><th>契約形態</th><th>単価（PHP/時）</th><th>操作</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
 
@@ -356,8 +356,8 @@ function showInstructorForm(inst) {
           <select id="iContract">${contractOpts}</select>
         </div>
         <div class="form-group">
-          <label>単価（円/時間）</label>
-          <input type="number" id="iPrice" value="${isEdit&&inst.unitPrice?inst.unitPrice:''}" min="0" step="100" placeholder="3000">
+          <label>単価（PHP/時間）</label>
+          <input type="number" id="iPrice" value="${isEdit&&inst.unitPrice?inst.unitPrice:''}" min="0" step="1" placeholder="500">
         </div>
       </div>
       <div class="form-actions">
