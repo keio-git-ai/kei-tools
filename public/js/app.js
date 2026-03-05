@@ -226,7 +226,7 @@ function showSlotModal(date, hour) {
         <tbody>
           ${avail.map(inst => `<tr>
             <td><strong>${escHtml(inst.name)}</strong></td>
-            <td>${escHtml(inst.company)}</td>
+            <td>${inst.company ? escHtml(inst.company) : '<span class="text-muted">—</span>'}</td>
             <td>${(inst.subjects||[]).map(s=>`<span class="tag">${escHtml(s)}</span>`).join('')}</td>
             <td><span class="badge">${escHtml(inst.contractType)}</span></td>
             <td class="price-cell">${inst.unitPrice ? inst.unitPrice.toLocaleString()+'円' : '—'}</td>
@@ -258,7 +258,7 @@ function buildInstructors() {
           <span class="instructor-name">${escHtml(inst.name)}</span>
         </div>
       </td>
-      <td>${escHtml(inst.company)}</td>
+      <td>${inst.company ? escHtml(inst.company) : '<span class="text-muted">—</span>'}</td>
       <td>${(inst.subjects||[]).map(s=>`<span class="tag">${escHtml(s)}</span>`).join('') || '<span class="text-muted">—</span>'}</td>
       <td><span class="badge">${escHtml(inst.contractType)}</span></td>
       <td class="price-cell">${inst.unitPrice ? inst.unitPrice.toLocaleString()+'円' : '—'}</td>
@@ -327,8 +327,8 @@ function showInstructorForm(inst) {
           <input type="text" id="iName" value="${isEdit?escHtml(inst.name):''}" placeholder="山田 太郎" required>
         </div>
         <div class="form-group">
-          <label>所属会社<span class="required">*</span></label>
-          <input type="text" id="iCompany" value="${isEdit?escHtml(inst.company):''}" placeholder="株式会社〇〇" required>
+          <label>所属会社</label>
+          <input type="text" id="iCompany" value="${isEdit?escHtml(inst.company):''}" placeholder="株式会社〇〇">
         </div>
       </div>
       <div class="form-group">
@@ -363,7 +363,7 @@ function showInstructorForm(inst) {
       contractType: document.getElementById('iContract').value,
       unitPrice: parseInt(document.getElementById('iPrice').value) || 0,
     };
-    if (!data.name || !data.company) { toast('名前と所属会社は必須です', 'error'); return; }
+    if (!data.name) { toast('名前は必須です', 'error'); return; }
     if (isEdit) {
       await api.updateInstructor(inst.id, data);
       toast(`${data.name} の情報を更新しました`, 'success');
@@ -388,7 +388,7 @@ function buildShifts() {
       <div class="avatar" style="background:${avatarColor(inst.name)};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:white;flex-shrink:0;">${escHtml(inst.name[0]||'?')}</div>
       <div class="instructor-info">
         <div class="instructor-item-name">${escHtml(inst.name)}</div>
-        <div class="instructor-item-company">${escHtml(inst.company)} · ${shiftCount}件</div>
+        <div class="instructor-item-company">${inst.company ? escHtml(inst.company)+' · ' : ''}${shiftCount}件</div>
       </div>
     </div>`;
   }).join('');
