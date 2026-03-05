@@ -1,0 +1,42 @@
+[
+  {
+    "id": "4544e7b9-72b5-4e6e-9e54-a7d3ed416c4e",
+    "instructorId": "07720813-c8e6-44e4-bd44-b01f8b9b7aa3",
+    "type": "fixed",
+    "startTime": "09:00",
+    "endTime": "18:00",
+    "dayOfWeek": 0
+  },
+  {
+    "id": "ee87e8ad-2e30-41ef-9497-6623c3d6b37d",
+    "instructorId": "07720813-c8e6-44e4-bd44-b01f8b9b7aa3",
+    "type": "fixed",
+    "startTime": "09:00",
+    "endTime": "18:00",
+    "dayOfWeek": 1
+  },
+  {
+    "id": "ef512383-968a-4908-841b-bdc7a693e32a",
+    "instructorId": "07720813-c8e6-44e4-bd44-b01f8b9b7aa3",
+    "type": "fixed",
+    "startTime": "09:00",
+    "endTime": "18:00",
+    "dayOfWeek": 2
+  },
+  {
+    "id": "2c64b8d1-2fc1-4c09-8166-85b25afa8fbe",
+    "instructorId": "07720813-c8e6-44e4-bd44-b01f8b9b7aa3",
+    "type": "fixed",
+    "startTime": "09:00",
+    "endTime": "18:00",
+    "dayOfWeek": 3
+  },
+  {
+    "id": "1a56decc-d51c-4d12-a5df-2a7dc3f010ff",
+    "instructorId": "07720813-c8e6-44e4-bd44-b01f8b9b7aa3",
+    "type": "fixed",
+    "startTime": "09:00",
+    "endTime": "18:00",
+    "dayOfWeek": 4
+  }
+]
