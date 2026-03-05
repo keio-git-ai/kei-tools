@@ -2,6 +2,7 @@
 const state = {
   instructors: [],
   shifts: [],
+  subjects: [],
   currentView: 'dashboard',
   weekOffset: 0,
   selectedInstructorId: null,
@@ -27,6 +28,10 @@ const api = {
   createShift: (d) => api.req('POST', '/api/shifts', d),
   updateShift: (id, d) => api.req('PUT', `/api/shifts/${id}`, d),
   deleteShift: (id) => api.req('DELETE', `/api/shifts/${id}`),
+  getSubjects: () => api.req('GET', '/api/subjects'),
+  createSubject: (d) => api.req('POST', '/api/subjects', d),
+  updateSubject: (id, d) => api.req('PUT', `/api/subjects/${id}`, d),
+  deleteSubject: (id) => api.req('DELETE', `/api/subjects/${id}`),
 };
 
 // ===== UTILS =====
@@ -122,6 +127,7 @@ function render() {
     case 'dashboard':  app.innerHTML = buildDashboard();  bindDashboard();  break;
     case 'instructors': app.innerHTML = buildInstructors(); bindInstructors(); break;
     case 'shifts':      app.innerHTML = buildShifts();      bindShifts();      break;
+    case 'subjects':    app.innerHTML = buildSubjects();    bindSubjects();    break;
   }
 }
 
@@ -332,8 +338,17 @@ function showInstructorForm(inst) {
         </div>
       </div>
       <div class="form-group">
-        <label>担当科目<span class="hint">（カンマ区切りで複数入力可）</span></label>
-        <input type="text" id="iSubjects" value="${isEdit?(inst.subjects||[]).join(', '):''}" placeholder="英語, 数学, 国語">
+        <label>担当科目</label>
+        ${state.subjects.length === 0
+          ? `<p class="subjects-empty-hint">科目が登録されていません。<a href="#" id="goToSubjects">科目管理</a>から先に追加してください。</p>`
+          : `<div class="checkbox-grid">${state.subjects.map(sub => {
+              const checked = isEdit && (inst.subjects||[]).includes(sub.name) ? 'checked' : '';
+              return `<label class="checkbox-item">
+                <input type="checkbox" name="subjects" value="${escHtml(sub.name)}" ${checked}>
+                <span>${escHtml(sub.name)}</span>
+              </label>`;
+            }).join('')}</div>`
+        }
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -354,12 +369,22 @@ function showInstructorForm(inst) {
 
   document.getElementById('cancelForm').onclick = closeModal;
 
+  const goSubjects = document.getElementById('goToSubjects');
+  if (goSubjects) {
+    goSubjects.onclick = (e) => {
+      e.preventDefault();
+      closeModal();
+      state.currentView = 'subjects';
+      render();
+    };
+  }
+
   document.getElementById('instForm').onsubmit = async (e) => {
     e.preventDefault();
     const data = {
       name: document.getElementById('iName').value.trim(),
       company: document.getElementById('iCompany').value.trim(),
-      subjects: document.getElementById('iSubjects').value.split(',').map(s=>s.trim()).filter(Boolean),
+      subjects: [...document.querySelectorAll('input[name="subjects"]:checked')].map(el => el.value),
       contractType: document.getElementById('iContract').value,
       unitPrice: parseInt(document.getElementById('iPrice').value) || 0,
     };
@@ -613,11 +638,124 @@ function closeModal() {
   if (el) el.remove();
 }
 
+// ===== SUBJECTS =====
+function buildSubjects() {
+  const rows = state.subjects.map(sub => {
+    const useCount = state.instructors.filter(i => (i.subjects||[]).includes(sub.name)).length;
+    return `<tr>
+      <td><strong>${escHtml(sub.name)}</strong></td>
+      <td>${useCount > 0 ? `<span class="badge">${useCount}名が担当</span>` : '<span class="text-muted">—</span>'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn btn-ghost btn-sm edit-subject" data-id="${sub.id}" data-name="${escHtml(sub.name)}">編集</button>
+          <button class="btn btn-danger btn-sm del-subject" data-id="${sub.id}" data-name="${escHtml(sub.name)}"${useCount > 0 ? ' data-used="1"' : ''}>削除</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const body = state.subjects.length === 0
+    ? `<div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <p>科目が登録されていません<br><small>右上の「科目を追加」から登録してください</small></p>
+      </div>`
+    : `<table class="data-table">
+        <thead><tr><th>科目名</th><th>利用状況</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+  return `<div class="card">
+    <div class="section-header">
+      <span class="section-title">科目管理（${state.subjects.length}件）</span>
+      <button id="addSubject" class="btn btn-primary">+ 科目を追加</button>
+    </div>
+    <div class="section-body">${body}</div>
+  </div>`;
+}
+
+function bindSubjects() {
+  document.getElementById('addSubject').onclick = () => showSubjectForm(null);
+
+  document.querySelectorAll('.edit-subject').forEach(btn => {
+    btn.onclick = () => showSubjectForm({ id: btn.dataset.id, name: btn.dataset.name });
+  });
+
+  document.querySelectorAll('.del-subject').forEach(btn => {
+    btn.onclick = async () => {
+      const name = btn.dataset.name;
+      const isUsed = btn.dataset.used === '1';
+      const msg = isUsed
+        ? `「${name}」は講師に設定されていますが削除しますか？\n（講師の担当科目からも削除されます）`
+        : `「${name}」を削除しますか？`;
+      if (!confirm(msg)) return;
+
+      await api.deleteSubject(btn.dataset.id);
+
+      // 講師データから該当科目名を除去
+      if (isUsed) {
+        const targets = state.instructors.filter(i => (i.subjects||[]).includes(name));
+        await Promise.all(targets.map(i =>
+          api.updateInstructor(i.id, { ...i, subjects: i.subjects.filter(s => s !== name) })
+        ));
+      }
+
+      await loadData();
+      render();
+      toast(`「${name}」を削除しました`);
+    };
+  });
+}
+
+function showSubjectForm(subject) {
+  const isEdit = !!subject;
+  showModal(isEdit ? '科目を編集' : '科目を追加', `
+    <form id="subjectForm">
+      <div class="form-group">
+        <label>科目名<span class="required">*</span></label>
+        <input type="text" id="sName" value="${isEdit ? escHtml(subject.name) : ''}" placeholder="例：英語・数学・プログラミング" required>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">${isEdit ? '更新' : '追加'}</button>
+        <button type="button" class="btn btn-ghost" id="cancelSubject">キャンセル</button>
+      </div>
+    </form>
+  `);
+
+  document.getElementById('cancelSubject').onclick = closeModal;
+
+  document.getElementById('subjectForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('sName').value.trim();
+    if (!name) { toast('科目名は必須です', 'error'); return; }
+
+    const duplicate = state.subjects.find(s => s.name === name && (!isEdit || s.id !== subject.id));
+    if (duplicate) { toast('同じ名前の科目がすでに存在します', 'error'); return; }
+
+    if (isEdit) {
+      await api.updateSubject(subject.id, { name });
+      // 講師データの科目名も更新
+      const targets = state.instructors.filter(i => (i.subjects||[]).includes(subject.name));
+      await Promise.all(targets.map(i =>
+        api.updateInstructor(i.id, { ...i, subjects: i.subjects.map(s => s === subject.name ? name : s) })
+      ));
+      toast(`「${name}」に更新しました`, 'success');
+    } else {
+      await api.createSubject({ name });
+      toast(`「${name}」を追加しました`, 'success');
+    }
+
+    closeModal();
+    await loadData();
+    render();
+  };
+}
+
 // ===== DATA =====
 async function loadData() {
-  [state.instructors, state.shifts] = await Promise.all([
+  [state.instructors, state.shifts, state.subjects] = await Promise.all([
     api.getInstructors(),
     api.getShifts(),
+    api.getSubjects(),
   ]);
 }
 

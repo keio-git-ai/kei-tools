@@ -9,11 +9,13 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const INSTRUCTORS_FILE = path.join(DATA_DIR, 'instructors.json');
 const SHIFTS_FILE = path.join(DATA_DIR, 'shifts.json');
+const SUBJECTS_FILE = path.join(DATA_DIR, 'subjects.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 if (!fs.existsSync(INSTRUCTORS_FILE)) fs.writeFileSync(INSTRUCTORS_FILE, '[]');
 if (!fs.existsSync(SHIFTS_FILE)) fs.writeFileSync(SHIFTS_FILE, '[]');
+if (!fs.existsSync(SUBJECTS_FILE)) fs.writeFileSync(SUBJECTS_FILE, '[]');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -89,6 +91,36 @@ app.delete('/api/shifts/:id', (req, res) => {
   let shifts = readJSON(SHIFTS_FILE);
   shifts = shifts.filter(s => s.id !== req.params.id);
   writeJSON(SHIFTS_FILE, shifts);
+  res.json({ success: true });
+});
+
+// Subjects
+app.get('/api/subjects', (req, res) => {
+  res.json(readJSON(SUBJECTS_FILE));
+});
+
+app.post('/api/subjects', (req, res) => {
+  const subjects = readJSON(SUBJECTS_FILE);
+  const subject = { id: uuidv4(), ...req.body };
+  subjects.push(subject);
+  writeJSON(SUBJECTS_FILE, subjects);
+  res.json(subject);
+});
+
+app.put('/api/subjects/:id', (req, res) => {
+  const subjects = readJSON(SUBJECTS_FILE);
+  const idx = subjects.findIndex(s => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  subjects[idx] = { ...subjects[idx], ...req.body };
+  writeJSON(SUBJECTS_FILE, subjects);
+  res.json(subjects[idx]);
+});
+
+app.delete('/api/subjects/:id', (req, res) => {
+  const subjects = readJSON(SUBJECTS_FILE);
+  const subject = subjects.find(s => s.id === req.params.id);
+  if (!subject) return res.status(404).json({ error: 'Not found' });
+  writeJSON(SUBJECTS_FILE, subjects.filter(s => s.id !== req.params.id));
   res.json({ success: true });
 });
 
