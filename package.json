@@ -1,0 +1,14 @@
+{
+  "name": "instructor-shift-manager",
+  "version": "1.0.0",
+  "description": "講師シフト管理システム",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "uuid": "^9.0.0"
+  }
+}
