@@ -69,8 +69,10 @@ function parseTime(t) {
 function getAvailableInstructors(date, hour) {
   const dateStr = toDateStr(date);
   const dow = dateDow(date);
-  return state.instructors.filter(inst =>
-    state.shifts.some(s => {
+  return state.instructors.filter(inst => {
+    // 休日設定があれば対応不可
+    if (state.shifts.some(s => s.instructorId === inst.id && s.type === 'holiday' && s.date === dateStr)) return false;
+    return state.shifts.some(s => {
       if (s.instructorId !== inst.id) return false;
       const st = parseTime(s.startTime);
       const et = parseTime(s.endTime);
@@ -78,8 +80,8 @@ function getAvailableInstructors(date, hour) {
       if (s.type === 'fixed') return s.dayOfWeek === dow && inRange;
       if (s.type === 'specific') return s.date === dateStr && inRange;
       return false;
-    })
-  );
+    });
+  });
 }
 
 function slotLevel(count) {
@@ -439,6 +441,7 @@ function buildShifts() {
     const myShifts = state.shifts.filter(s => s.instructorId === state.selectedInstructorId);
     const fixedShifts = myShifts.filter(s => s.type === 'fixed').sort((a,b) => a.dayOfWeek - b.dayOfWeek);
     const specificShifts = myShifts.filter(s => s.type === 'specific').sort((a,b) => a.date.localeCompare(b.date));
+    const holidays = myShifts.filter(s => s.type === 'holiday').sort((a,b) => a.date.localeCompare(b.date));
 
     const fixedRows = fixedShifts.map(s => `<tr>
       <td><strong>${DAY_FULL_NAMES[s.dayOfWeek]}</strong></td>
@@ -465,6 +468,19 @@ function buildShifts() {
     const specificTable = specificShifts.length === 0
       ? '<p class="empty-state" style="padding:20px;">特定日シフトが登録されていません</p>'
       : `<table class="data-table"><thead><tr><th>日付</th><th>開始</th><th>終了</th><th>操作</th></tr></thead><tbody>${specificRows}</tbody></table>`;
+
+    const holidayRows = holidays.map(s => {
+      const d = new Date(s.date + 'T00:00:00');
+      const label = `${d.getMonth()+1}/${d.getDate()}（${DAY_NAMES[dateDow(d)]}）`;
+      return `<tr>
+        <td><strong>${s.date}</strong>&nbsp;<span style="color:var(--text-muted);font-size:12px;">${label}</span></td>
+        <td>${s.note ? `<span class="badge">${escHtml(s.note)}</span>` : '<span class="text-muted">—</span>'}</td>
+        <td><button class="btn btn-danger btn-sm del-shift" data-id="${s.id}">削除</button></td>
+      </tr>`;
+    }).join('');
+    const holidayTable = holidays.length === 0
+      ? '<p class="empty-state" style="padding:20px;">休日設定がありません</p>'
+      : `<table class="data-table"><thead><tr><th>日付</th><th>理由</th><th>操作</th></tr></thead><tbody>${holidayRows}</tbody></table>`;
 
     rightPanel = `<div style="display:flex;flex-direction:column;gap:20px;">
       <div class="card">
@@ -497,6 +513,17 @@ function buildShifts() {
         </div>
         ${specificTable}
       </div>
+
+      <div class="card">
+        <div class="shift-type-header">
+          <span class="shift-type-title">
+            <span class="shift-type-icon icon-holiday"></span>
+            休日設定（有給・代休など）
+          </span>
+          <button id="addHoliday" class="btn btn-secondary btn-sm">+ 休日を追加</button>
+        </div>
+        ${holidayTable}
+      </div>
     </div>`;
   }
 
@@ -520,15 +547,62 @@ function bindShifts() {
   const addSpecific = document.getElementById('addSpecific');
   if (addSpecific) addSpecific.onclick = () => showShiftForm('specific');
 
+  const addHoliday = document.getElementById('addHoliday');
+  if (addHoliday) addHoliday.onclick = () => showHolidayForm();
+
   document.querySelectorAll('.del-shift').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('このシフトを削除しますか？')) return;
+      if (!confirm('このエントリを削除しますか？')) return;
       await api.deleteShift(btn.dataset.id);
       await loadData();
       render();
-      toast('シフトを削除しました');
+      toast('削除しました');
     };
   });
+}
+
+function showHolidayForm() {
+  const todayStr = toDateStr(new Date());
+  const noteOpts = ['有給休暇','代休','病欠','その他'].map(n => `<option value="${n}">${n}</option>`).join('');
+
+  showModal('休日を追加', `
+    <form id="holidayForm">
+      <div class="form-group">
+        <label>日付<span class="required">*</span></label>
+        <input type="date" id="hDate" value="${todayStr}" required>
+      </div>
+      <div class="form-group">
+        <label>理由</label>
+        <select id="hNote">
+          <option value="">選択しない</option>
+          ${noteOpts}
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">追加</button>
+        <button type="button" class="btn btn-ghost" id="cancelHoliday">キャンセル</button>
+      </div>
+    </form>
+  `);
+
+  document.getElementById('cancelHoliday').onclick = closeModal;
+
+  document.getElementById('holidayForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const date = document.getElementById('hDate').value;
+    if (!date) { toast('日付を入力してください', 'error'); return; }
+
+    // 同日に既に休日設定があるか確認
+    const dup = state.shifts.find(s => s.instructorId === state.selectedInstructorId && s.type === 'holiday' && s.date === date);
+    if (dup) { toast('その日はすでに休日設定があります', 'error'); return; }
+
+    const note = document.getElementById('hNote').value;
+    await api.createShift({ instructorId: state.selectedInstructorId, type: 'holiday', date, note });
+    closeModal();
+    await loadData();
+    render();
+    toast('休日を追加しました', 'success');
+  };
 }
 
 function generateTimeOpts(startH = 7, endH = 23) {

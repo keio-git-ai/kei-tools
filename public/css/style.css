@@ -414,6 +414,7 @@ main#app {
 
 .icon-fixed { background: var(--primary); }
 .icon-specific { background: var(--success); }
+.icon-holiday { background: #f59e0b; }
 
 /* ===== FORMS ===== */
 .form-group {
