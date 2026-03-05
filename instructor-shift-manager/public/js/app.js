@@ -70,6 +70,8 @@ function getAvailableInstructors(date, hour) {
   const dateStr = toDateStr(date);
   const dow = dateDow(date);
   return state.instructors.filter(inst => {
+    // 退職日以降は対応不可
+    if (inst.retirementDate && dateStr >= inst.retirementDate) return false;
     // 休日設定があれば対応不可
     if (state.shifts.some(s => s.instructorId === inst.id && s.type === 'holiday' && s.date === dateStr)) return false;
     return state.shifts.some(s => {
@@ -258,25 +260,32 @@ function showSlotModal(date, hour) {
 const CONTRACT_TYPES = ['業務委託','正社員','パート','アルバイト'];
 
 function buildInstructors() {
-  const rows = state.instructors.map(inst => `
-    <tr>
+  const rows = state.instructors.map(inst => {
+    const isRetired = inst.retirementDate && inst.retirementDate <= toDateStr(new Date());
+    return `
+    <tr${isRetired ? ' style="opacity:.55;"' : ''}>
       <td>
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="avatar" style="background:${avatarColor(inst.name)}">${escHtml(inst.name[0]||'?')}</div>
-          <span class="instructor-name">${escHtml(inst.name)}</span>
+          <div>
+            <span class="instructor-name">${escHtml(inst.name)}</span>
+            ${isRetired ? '<span class="badge" style="background:#6b7280;margin-left:6px;">退職済</span>' : ''}
+          </div>
         </div>
       </td>
       <td>${inst.company ? escHtml(inst.company) : '<span class="text-muted">—</span>'}</td>
       <td>${(inst.subjects||[]).map(s=>`<span class="tag">${escHtml(s)}</span>`).join('') || '<span class="text-muted">—</span>'}</td>
       <td><span class="badge">${escHtml(inst.contractType)}</span></td>
       <td class="price-cell">${inst.unitPrice ? inst.unitPrice.toLocaleString()+'PHP' : '—'}</td>
+      <td>${inst.retirementDate ? `<span style="color:${isRetired?'#6b7280':'var(--text-muted)'};">${inst.retirementDate}</span>` : '<span class="text-muted">—</span>'}</td>
       <td>
         <div class="action-btns">
           <button class="btn btn-ghost btn-sm edit-inst" data-id="${inst.id}">編集</button>
           <button class="btn btn-danger btn-sm del-inst" data-id="${inst.id}">削除</button>
         </div>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const body = state.instructors.length === 0
     ? `<div class="empty-state">
@@ -284,7 +293,7 @@ function buildInstructors() {
         <p>講師が登録されていません<br><small>右上の「講師を追加」から登録してください</small></p>
       </div>`
     : `<table class="data-table">
-        <thead><tr><th>名前</th><th>所属会社</th><th>担当科目</th><th>契約形態</th><th>単価（PHP/時）</th><th>操作</th></tr></thead>
+        <thead><tr><th>名前</th><th>所属会社</th><th>担当科目</th><th>契約形態</th><th>単価（PHP/時）</th><th>退職日</th><th>操作</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
 
@@ -362,6 +371,11 @@ function showInstructorForm(inst) {
           <input type="number" id="iPrice" value="${isEdit&&inst.unitPrice?inst.unitPrice:''}" min="0" step="1" placeholder="500">
         </div>
       </div>
+      <div class="form-group">
+        <label>退職日</label>
+        <input type="date" id="iRetirement" value="${isEdit&&inst.retirementDate?inst.retirementDate:''}">
+        <small style="color:var(--text-muted);font-size:12px;">設定した日以降はシフトにカウントされません</small>
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">${isEdit?'更新':'追加'}</button>
         <button type="button" class="btn btn-ghost" id="cancelForm">キャンセル</button>
@@ -389,6 +403,7 @@ function showInstructorForm(inst) {
       subjects: [...document.querySelectorAll('input[name="subjects"]:checked')].map(el => el.value),
       contractType: document.getElementById('iContract').value,
       unitPrice: parseInt(document.getElementById('iPrice').value) || 0,
+      retirementDate: document.getElementById('iRetirement').value || null,
     };
     if (!data.name) { toast('名前は必須です', 'error'); return; }
     if (isEdit) {
