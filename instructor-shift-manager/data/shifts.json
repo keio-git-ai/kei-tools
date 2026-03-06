@@ -38,5 +38,13 @@
     "startTime": "09:00",
     "endTime": "18:00",
     "dayOfWeek": 4
+  },
+  {
+    "id": "21a2a1f6-a416-4475-ac92-bd071283ccc9",
+    "instructorId": "12925e9d-6dc4-4ccb-8d44-a74bef829311",
+    "type": "fixed",
+    "startTime": "07:00",
+    "endTime": "23:00",
+    "dayOfWeek": 0
   }
 ]
