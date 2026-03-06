@@ -3,6 +3,8 @@ const state = {
   instructors: [],
   shifts: [],
   subjects: [],
+  bookings: [],
+  customers: [],
   currentView: 'dashboard',
   weekOffset: 0,
   selectedInstructorId: null,
@@ -32,6 +34,14 @@ const api = {
   createSubject: (d) => api.req('POST', '/api/subjects', d),
   updateSubject: (id, d) => api.req('PUT', `/api/subjects/${id}`, d),
   deleteSubject: (id) => api.req('DELETE', `/api/subjects/${id}`),
+  getBookings: () => api.req('GET', '/api/bookings'),
+  createBooking: (d) => api.req('POST', '/api/bookings', d),
+  updateBooking: (id, d) => api.req('PUT', `/api/bookings/${id}`, d),
+  deleteBooking: (id) => api.req('DELETE', `/api/bookings/${id}`),
+  getCustomers: () => api.req('GET', '/api/customers'),
+  createCustomer: (d) => api.req('POST', '/api/customers', d),
+  updateCustomer: (id, d) => api.req('PUT', `/api/customers/${id}`, d),
+  deleteCustomer: (id) => api.req('DELETE', `/api/customers/${id}`),
 };
 
 // ===== UTILS =====
@@ -94,6 +104,87 @@ function slotLevel(count) {
   return 4;
 }
 
+function getBooking(dateStr, hour) {
+  return state.bookings.find(b => b.date === dateStr && b.hour === hour) || null;
+}
+
+function getCustomerCountForSlot(dateStr, hour) {
+  return state.customers.reduce((sum, c) => {
+    if (dateStr < c.startDate || dateStr > c.endDate) return sum;
+    if (c.startTime && c.endTime) {
+      const st = parseTime(c.startTime);
+      const et = parseTime(c.endTime);
+      if (!(st <= hour && et >= hour + 50 / 60)) return sum;
+    }
+    return sum + (c.count || 0);
+  }, 0);
+}
+
+function showCapacityErrors(errors) {
+  const existing = document.getElementById('capacityErrorBox');
+  if (existing) existing.remove();
+
+  const shown = errors.slice(0, 5);
+  const more = errors.length > 5 ? `<div class="capacity-error-more">他 ${errors.length - 5} 件のスロットで不足</div>` : '';
+  const box = document.createElement('div');
+  box.id = 'capacityErrorBox';
+  box.className = 'capacity-error-box';
+  box.innerHTML = `
+    <div class="capacity-error-title">在庫不足のスロット（${errors.length}件）</div>
+    ${shown.map(e => `
+      <div class="capacity-error-row">
+        <span>${e.dateStr} ${pad(e.hour)}:00〜${pad(e.hour)}:50</span>
+        <span class="capacity-error-num">残り ${e.remaining}名</span>
+      </div>`).join('')}
+    ${more}
+  `;
+  const actions = document.querySelector('.form-actions');
+  if (actions) actions.before(box);
+}
+
+function validateCustomerCapacity(startDate, endDate, startTime, endTime, count, excludeCustomerId = null) {
+  const errors = [];
+  const end = new Date(endDate + 'T00:00:00');
+  for (let d = new Date(startDate + 'T00:00:00'); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateStr = toDateStr(d);
+    const hoursToCheck = HOURS.filter(h => {
+      if (!startTime || !endTime) return true;
+      return parseTime(startTime) <= h && parseTime(endTime) >= h + 50 / 60;
+    });
+    for (const hour of hoursToCheck) {
+      const avail = getAvailableInstructors(new Date(dateStr + 'T00:00:00'), hour);
+      const existingCustomers = state.customers
+        .filter(c => c.id !== excludeCustomerId)
+        .reduce((sum, c) => {
+          if (dateStr < c.startDate || dateStr > c.endDate) return sum;
+          if (c.startTime && c.endTime) {
+            if (!(parseTime(c.startTime) <= hour && parseTime(c.endTime) >= hour + 50 / 60)) return sum;
+          }
+          return sum + (c.count || 0);
+        }, 0);
+      const manualBooking = getBooking(dateStr, hour);
+      const manualCount = manualBooking ? manualBooking.count : 0;
+      const remaining = avail.length - existingCustomers - manualCount;
+      if (remaining < count) {
+        errors.push({ dateStr, hour, remaining: Math.max(0, remaining), available: avail.length });
+      }
+    }
+  }
+  return errors;
+}
+
+function getCustomersForSlot(dateStr, hour) {
+  return state.customers.filter(c => {
+    if (dateStr < c.startDate || dateStr > c.endDate) return false;
+    if (c.startTime && c.endTime) {
+      const st = parseTime(c.startTime);
+      const et = parseTime(c.endTime);
+      if (!(st <= hour && et >= hour + 50 / 60)) return false;
+    }
+    return true;
+  });
+}
+
 function escHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -132,6 +223,7 @@ function render() {
     case 'instructors': app.innerHTML = buildInstructors(); bindInstructors(); break;
     case 'shifts':      app.innerHTML = buildShifts();      bindShifts();      break;
     case 'subjects':    app.innerHTML = buildSubjects();    bindSubjects();    break;
+    case 'customers':   app.innerHTML = buildCustomers();   bindCustomers();   break;
   }
 }
 
@@ -149,13 +241,29 @@ function buildDashboard() {
     const hour = HOURS[hi];
     let cells = '';
     dates.forEach(date => {
+      const dateStr = toDateStr(date);
       const avail = getAvailableInstructors(date, hour);
       const cnt = avail.length;
-      const lvl = slotLevel(cnt);
-      cells += `<td class="slot-cell lvl-${lvl}"
-        data-date="${toDateStr(date)}" data-hour="${hour}"
-        title="${toDateStr(date)} ${pad(hour)}:00〜${pad(hour)}:50  対応可能: ${cnt}名">
-        ${cnt > 0 ? `<div class="slot-count">${cnt}</div><div class="slot-unit">名</div>` : ''}
+      const booking = getBooking(dateStr, hour);
+      const manualBooked = booking ? booking.count : 0;
+      const customerBooked = getCustomerCountForSlot(dateStr, hour);
+      const booked = manualBooked + customerBooked;
+      const remaining = Math.max(0, cnt - booked);
+      const isFull = cnt > 0 && remaining === 0;
+      const lvlClass = isFull ? 'lvl-0 full' : `lvl-${slotLevel(remaining)}`;
+      let cellContent = '';
+      if (cnt > 0) {
+        if (isFull) {
+          cellContent = `<div class="slot-count slot-full-text">満</div>`;
+        } else {
+          cellContent = `<div class="slot-count">${remaining}</div><div class="slot-unit">残り</div>`;
+          if (booked > 0) cellContent += `<div class="slot-booked">予約${booked}名</div>`;
+        }
+      }
+      cells += `<td class="slot-cell ${lvlClass}"
+        data-date="${dateStr}" data-hour="${hour}"
+        title="${dateStr} ${pad(hour)}:00〜${pad(hour)}:50  対応可能: ${cnt}名 / 顧客: ${customerBooked}名 / 手動: ${manualBooked}名 / 残り: ${remaining}名">
+        ${cellContent}
       </td>`;
     });
     rows += `<tr>
@@ -200,7 +308,8 @@ function buildDashboard() {
     </div>
 
     <div class="legend">
-      <span style="font-weight:600;">対応可能人数：</span>
+      <span style="font-weight:600;">残枠数：</span>
+      <span class="legend-chip"><span class="dot dot-full"></span>満員</span>
       <span class="legend-chip"><span class="dot dot-0"></span>0名</span>
       <span class="legend-chip"><span class="dot dot-1"></span>1〜2名</span>
       <span class="legend-chip"><span class="dot dot-2"></span>3〜4名</span>
@@ -226,10 +335,17 @@ function bindDashboard() {
 
 function showSlotModal(date, hour) {
   const avail = getAvailableInstructors(date, hour);
+  const dateStr = toDateStr(date);
   const dow = DAY_NAMES[dateDow(date)];
   const dateLabel = `${date.getMonth()+1}月${date.getDate()}日（${dow}）`;
+  const booking = getBooking(dateStr, hour);
+  const manualBooked = booking ? booking.count : 0;
+  const customerBooked = getCustomerCountForSlot(dateStr, hour);
+  const customersForSlot = getCustomersForSlot(dateStr, hour);
+  const booked = manualBooked + customerBooked;
+  const remaining = Math.max(0, avail.length - booked);
 
-  const rows = avail.length === 0
+  const instructorRows = avail.length === 0
     ? `<div class="no-instructors">この時間帯に対応可能な講師はいません</div>`
     : `<table class="modal-table">
         <thead><tr><th>名前</th><th>所属会社</th><th>担当科目</th><th>契約形態</th><th>単価</th></tr></thead>
@@ -252,8 +368,78 @@ function showSlotModal(date, hour) {
       </div>
       <span class="avail-count">${avail.length}名 対応可能</span>
     </div>
-    ${rows}
+    <div class="booking-form">
+      ${customersForSlot.length > 0 ? `
+      <div class="customer-booking-list">
+        <div class="customer-booking-header">顧客予約</div>
+        ${customersForSlot.map(c => `
+          <div class="customer-booking-item">
+            <span class="customer-booking-name">${escHtml(c.name)}</span>
+            <span class="customer-booking-period">${c.startDate}〜${c.endDate}</span>
+            <span class="customer-booking-count">${c.count}名</span>
+          </div>
+        `).join('')}
+        <div class="customer-booking-subtotal">顧客合計: ${customerBooked}名</div>
+      </div>` : ''}
+      <div class="booking-form-row">
+        <span class="booking-label">追加予約</span>
+        <div class="booking-input-group">
+          <button type="button" class="btn btn-ghost btn-sm" id="bookingDec">−</button>
+          <input type="number" id="bookingCount" class="booking-count-input"
+            value="${manualBooked}" min="0" max="${avail.length}">
+          <button type="button" class="btn btn-ghost btn-sm" id="bookingInc">＋</button>
+          <span class="booking-remaining" id="bookingRemaining"
+            style="color:${remaining===0&&avail.length>0?'var(--danger)':'var(--text-muted)'};">
+            残り ${remaining}名
+          </span>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveBooking">保存</button>
+      </div>
+    </div>
+    <div style="margin-top:4px;">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">対応可能な講師</div>
+      ${instructorRows}
+    </div>
   `, true);
+
+  const countInput = document.getElementById('bookingCount');
+  const remainingEl = document.getElementById('bookingRemaining');
+  const maxCount = avail.length;
+
+  function updateRemaining() {
+    const count = Math.max(0, Math.min(maxCount, parseInt(countInput.value) || 0));
+    countInput.value = count;
+    const rem = maxCount - customerBooked - count;
+    remainingEl.textContent = `残り ${Math.max(0, rem)}名`;
+    remainingEl.style.color = rem <= 0 && maxCount > 0 ? 'var(--danger)' : 'var(--text-muted)';
+  }
+
+  document.getElementById('bookingDec').onclick = () => {
+    countInput.value = Math.max(0, parseInt(countInput.value) - 1);
+    updateRemaining();
+  };
+  document.getElementById('bookingInc').onclick = () => {
+    countInput.value = Math.min(maxCount - customerBooked, parseInt(countInput.value) + 1);
+    updateRemaining();
+  };
+  countInput.oninput = updateRemaining;
+
+  document.getElementById('saveBooking').onclick = async () => {
+    const count = parseInt(countInput.value) || 0;
+    if (booking) {
+      if (count === 0) {
+        await api.deleteBooking(booking.id);
+      } else {
+        await api.updateBooking(booking.id, { count });
+      }
+    } else if (count > 0) {
+      await api.createBooking({ date: dateStr, hour, count });
+    }
+    closeModal();
+    await loadData();
+    render();
+    toast('予約数を更新しました', 'success');
+  };
 }
 
 // ===== INSTRUCTORS =====
@@ -839,12 +1025,192 @@ function showSubjectForm(subject) {
   };
 }
 
+// ===== CUSTOMERS =====
+function buildCustomers() {
+  const rows = state.customers.map(c => {
+    const timeRange = c.startTime && c.endTime
+      ? `${c.startTime}〜${c.endTime}`
+      : '終日';
+    const today = toDateStr(new Date());
+    const isActive = today >= c.startDate && today <= c.endDate;
+    const isPast = today > c.endDate;
+    return `<tr${isPast ? ' style="opacity:.55;"' : ''}>
+      <td>
+        <strong>${escHtml(c.name)}</strong>
+        ${isActive ? '<span class="badge" style="background:#d1fae5;color:#065f46;margin-left:6px;">進行中</span>' : ''}
+        ${isPast ? '<span class="badge" style="background:#f1f5f9;color:#64748b;margin-left:6px;">終了</span>' : ''}
+      </td>
+      <td>${c.startDate}&nbsp;〜&nbsp;${c.endDate}</td>
+      <td>${timeRange}</td>
+      <td><strong>${c.count}</strong>名</td>
+      <td>${c.note ? escHtml(c.note) : '<span class="text-muted">—</span>'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn btn-ghost btn-sm edit-customer" data-id="${c.id}">編集</button>
+          <button class="btn btn-danger btn-sm del-customer" data-id="${c.id}">削除</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const body = state.customers.length === 0
+    ? `<div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+        <p>顧客が登録されていません<br><small>右上の「顧客を追加」から登録してください</small></p>
+      </div>`
+    : `<table class="data-table">
+        <thead><tr><th>顧客名</th><th>期間</th><th>時間帯</th><th>人数</th><th>備考</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+  return `<div class="card">
+    <div class="section-header">
+      <span class="section-title">顧客管理（${state.customers.length}件）</span>
+      <button id="addCustomer" class="btn btn-primary">+ 顧客を追加</button>
+    </div>
+    <div class="section-body">${body}</div>
+  </div>`;
+}
+
+function bindCustomers() {
+  document.getElementById('addCustomer').onclick = () => showCustomerForm(null);
+
+  document.querySelectorAll('.edit-customer').forEach(btn => {
+    btn.onclick = () => {
+      const c = state.customers.find(x => x.id === btn.dataset.id);
+      if (c) showCustomerForm(c);
+    };
+  });
+
+  document.querySelectorAll('.del-customer').forEach(btn => {
+    btn.onclick = async () => {
+      const c = state.customers.find(x => x.id === btn.dataset.id);
+      if (!c) return;
+      if (!confirm(`「${c.name}」を削除しますか？`)) return;
+      await api.deleteCustomer(btn.dataset.id);
+      await loadData();
+      render();
+      toast(`「${c.name}」を削除しました`);
+    };
+  });
+}
+
+function showCustomerForm(customer) {
+  const isEdit = !!customer;
+  const todayStr = toDateStr(new Date());
+  const timeOpts = generateTimeOpts();
+
+  showModal(isEdit ? '顧客情報を編集' : '顧客を追加', `
+    <form id="customerForm">
+      <div class="form-group">
+        <label>顧客名・会社名<span class="required">*</span></label>
+        <input type="text" id="cName" value="${isEdit ? escHtml(customer.name) : ''}" placeholder="例：トヨタ自動車、山田商事" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>開始日<span class="required">*</span></label>
+          <input type="date" id="cStart" value="${isEdit ? customer.startDate : todayStr}" required>
+        </div>
+        <div class="form-group">
+          <label>終了日<span class="required">*</span></label>
+          <input type="date" id="cEnd" value="${isEdit ? customer.endDate : todayStr}" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>開始時間<span class="hint">（空欄なら終日）</span></label>
+          <select id="cStartTime">
+            <option value="">指定なし（終日）</option>
+            ${timeOpts}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>終了時間</label>
+          <select id="cEndTime">
+            <option value="">指定なし（終日）</option>
+            ${timeOpts}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>人数<span class="required">*</span></label>
+          <input type="number" id="cCount" value="${isEdit ? customer.count : ''}" min="1" step="1" placeholder="10" required>
+        </div>
+        <div class="form-group">
+          <label>備考</label>
+          <input type="text" id="cNote" value="${isEdit && customer.note ? escHtml(customer.note) : ''}" placeholder="例：法人研修、英語コース">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">${isEdit ? '更新' : '追加'}</button>
+        <button type="button" class="btn btn-ghost" id="cancelCustomer">キャンセル</button>
+      </div>
+    </form>
+  `);
+
+  if (isEdit && customer.startTime) document.getElementById('cStartTime').value = customer.startTime;
+  if (isEdit && customer.endTime) document.getElementById('cEndTime').value = customer.endTime;
+
+  document.getElementById('cancelCustomer').onclick = closeModal;
+
+  document.getElementById('customerForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('cName').value.trim();
+    const startDate = document.getElementById('cStart').value;
+    const endDate = document.getElementById('cEnd').value;
+    const startTime = document.getElementById('cStartTime').value;
+    const endTime = document.getElementById('cEndTime').value;
+    const count = parseInt(document.getElementById('cCount').value) || 0;
+    const note = document.getElementById('cNote').value.trim();
+
+    if (!name) { toast('顧客名は必須です', 'error'); return; }
+    if (!startDate || !endDate) { toast('期間を入力してください', 'error'); return; }
+    if (endDate < startDate) { toast('終了日は開始日以降にしてください', 'error'); return; }
+    if (count < 1) { toast('人数は1名以上にしてください', 'error'); return; }
+    if (startTime && endTime && parseTime(startTime) >= parseTime(endTime)) {
+      toast('終了時間は開始時間より後にしてください', 'error'); return;
+    }
+
+    const capacityErrors = validateCustomerCapacity(
+      startDate, endDate, startTime, endTime, count,
+      isEdit ? customer.id : null
+    );
+    if (capacityErrors.length > 0) {
+      const shown = capacityErrors.slice(0, 3);
+      const lines = shown.map(e =>
+        `・${e.dateStr} ${pad(e.hour)}:00〜${pad(e.hour)}:50（残り${e.remaining}名）`
+      ).join('\n');
+      const more = capacityErrors.length > 3 ? `\n他 ${capacityErrors.length - 3} 件` : '';
+      toast(`在庫不足のスロットがあります:\n${lines}${more}`, 'error');
+      showCapacityErrors(capacityErrors);
+      return;
+    }
+
+    const data = { name, startDate, endDate, count, note,
+      startTime: startTime || null, endTime: endTime || null };
+
+    if (isEdit) {
+      await api.updateCustomer(customer.id, data);
+      toast(`「${name}」を更新しました`, 'success');
+    } else {
+      await api.createCustomer(data);
+      toast(`「${name}」を追加しました`, 'success');
+    }
+    closeModal();
+    await loadData();
+    render();
+  };
+}
+
 // ===== DATA =====
 async function loadData() {
-  [state.instructors, state.shifts, state.subjects] = await Promise.all([
+  [state.instructors, state.shifts, state.subjects, state.bookings, state.customers] = await Promise.all([
     api.getInstructors(),
     api.getShifts(),
     api.getSubjects(),
+    api.getBookings(),
+    api.getCustomers(),
   ]);
 }
 

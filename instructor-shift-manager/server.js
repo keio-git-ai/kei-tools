@@ -10,12 +10,16 @@ const DATA_DIR = path.join(__dirname, 'data');
 const INSTRUCTORS_FILE = path.join(DATA_DIR, 'instructors.json');
 const SHIFTS_FILE = path.join(DATA_DIR, 'shifts.json');
 const SUBJECTS_FILE = path.join(DATA_DIR, 'subjects.json');
+const BOOKINGS_FILE = path.join(DATA_DIR, 'bookings.json');
+const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 if (!fs.existsSync(INSTRUCTORS_FILE)) fs.writeFileSync(INSTRUCTORS_FILE, '[]');
 if (!fs.existsSync(SHIFTS_FILE)) fs.writeFileSync(SHIFTS_FILE, '[]');
 if (!fs.existsSync(SUBJECTS_FILE)) fs.writeFileSync(SUBJECTS_FILE, '[]');
+if (!fs.existsSync(BOOKINGS_FILE)) fs.writeFileSync(BOOKINGS_FILE, '[]');
+if (!fs.existsSync(CUSTOMERS_FILE)) fs.writeFileSync(CUSTOMERS_FILE, '[]');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -121,6 +125,64 @@ app.delete('/api/subjects/:id', (req, res) => {
   const subject = subjects.find(s => s.id === req.params.id);
   if (!subject) return res.status(404).json({ error: 'Not found' });
   writeJSON(SUBJECTS_FILE, subjects.filter(s => s.id !== req.params.id));
+  res.json({ success: true });
+});
+
+// Customers
+app.get('/api/customers', (req, res) => {
+  res.json(readJSON(CUSTOMERS_FILE));
+});
+
+app.post('/api/customers', (req, res) => {
+  const customers = readJSON(CUSTOMERS_FILE);
+  const customer = { id: uuidv4(), ...req.body };
+  customers.push(customer);
+  writeJSON(CUSTOMERS_FILE, customers);
+  res.json(customer);
+});
+
+app.put('/api/customers/:id', (req, res) => {
+  const customers = readJSON(CUSTOMERS_FILE);
+  const idx = customers.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  customers[idx] = { ...customers[idx], ...req.body };
+  writeJSON(CUSTOMERS_FILE, customers);
+  res.json(customers[idx]);
+});
+
+app.delete('/api/customers/:id', (req, res) => {
+  let customers = readJSON(CUSTOMERS_FILE);
+  customers = customers.filter(c => c.id !== req.params.id);
+  writeJSON(CUSTOMERS_FILE, customers);
+  res.json({ success: true });
+});
+
+// Bookings
+app.get('/api/bookings', (req, res) => {
+  res.json(readJSON(BOOKINGS_FILE));
+});
+
+app.post('/api/bookings', (req, res) => {
+  const bookings = readJSON(BOOKINGS_FILE);
+  const booking = { id: uuidv4(), ...req.body };
+  bookings.push(booking);
+  writeJSON(BOOKINGS_FILE, bookings);
+  res.json(booking);
+});
+
+app.put('/api/bookings/:id', (req, res) => {
+  const bookings = readJSON(BOOKINGS_FILE);
+  const idx = bookings.findIndex(b => b.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  bookings[idx] = { ...bookings[idx], ...req.body };
+  writeJSON(BOOKINGS_FILE, bookings);
+  res.json(bookings[idx]);
+});
+
+app.delete('/api/bookings/:id', (req, res) => {
+  let bookings = readJSON(BOOKINGS_FILE);
+  bookings = bookings.filter(b => b.id !== req.params.id);
+  writeJSON(BOOKINGS_FILE, bookings);
   res.json({ success: true });
 });
 
